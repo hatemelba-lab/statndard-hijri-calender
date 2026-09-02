@@ -1,0 +1,272 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>التقويم الهجري الرقمي</title>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; padding: 20px; font-family: Tahoma, Arial, sans-serif; background: #f4f1f8; color: #29263d; }
+h1 { text-align: center; margin-bottom: 6px; font-size: 30px; }
+.subtitle { text-align: center; color: #666; margin-bottom: 18px; line-height: 1.5; }
+.controls { display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+button { border: 0; border-radius: 8px; padding: 10px 15px; background: #405de6; color: white; font-weight: bold; cursor: pointer; }
+button:hover { opacity: 0.88; }
+button.adj-btn { background: #743ca8; }
+#yearTitle { min-width: 150px; text-align: center; font-weight: bold; font-size: 18px; }
+.layout { display: flex; gap: 15px; max-width: 1250px; margin: auto; }
+.events { width: 32%; background: white; border-radius: 12px; padding: 18px; border: 1px solid #ddd; }
+.calendar { width: 68%; background: white; border-radius: 12px; padding: 15px; border: 1px solid #ddd; }
+.events h2 { margin-top: 0; color: #743ca8; font-size: 20px; text-align: center; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+.event { padding: 10px 4px; border-bottom: 1px solid #eee; }
+.event:last-child { border-bottom: none; }
+.event-name { font-weight: bold; font-size: 15px; color: #743ca8; }
+.event-date { margin-top: 4px; color: #405de6; font-weight: bold; line-height: 1.5; font-size: 13px; }
+.month-header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(90deg, #405de6, #743ca8); color: white; padding: 12px 15px; border-radius: 99px; margin-bottom: 10px; font-weight: bold; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th { padding: 10px; background: #eee8f8; color: #4b3470; }
+td { height: 90px; border: 1px solid #ddd; text-align: center; vertical-align: middle; }
+.day { height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; border-radius: 7px; }
+.gregorian-day { font-size: 20px; font-weight: bold; }
+.hijri-day { font-size: 14px; font-weight: bold; color: #405de6; margin-top: 4px; }
+.hijri-month-start { background: #f0e6fa; outline: 2px solid #743ca8; position: relative; }
+.system-start { outline: 3px solid #405de6; background: #e9e8ff; }
+@media (max-width: 850px) {
+    .layout { display: block; }
+    .events, .calendar { width: 100%; }
+    .events { margin-bottom: 15px; }
+}
+</style>
+</head>
+<body>
+
+<h1>التقويم الهجري الرقمي</h1>
+<div class="subtitle">قبل 1 محرم 1456 هـ (21 مارس 2034): تقويم أم القرى الرسمي الحقيقي 100%<br>ابتداءً من 1 محرم 1456 هـ: بداية تطبيق تقويمك الجديد</div>
+
+<div class="controls">
+    <button onclick="previousYear()">السنة السابقة</button>
+    <button onclick="previousMonth()">الشهر السابق</button>
+    <span id="yearTitle"></span>
+    <button onclick="nextMonth()">الشهر التالي</button>
+    <button onclick="nextYear()">السنة التالية</button>
+    <button onclick="goToStart()">تاريخ التبديل (21 مارس 2034)</button>
+    <button class="adj-btn" onclick="adjustHijri(-1)">تعديل أم القرى (-1)</button>
+    <button class="adj-btn" onclick="adjustHijri(1)">تعديل أم القرى (+1)</button>
+</div>
+
+<div class="layout">
+    <aside class="events">
+        <h2 id="eventsHeader">مناسبات السنة الهجرية</h2>
+        <div id="eventsList"></div>
+    </aside>
+    <main class="calendar">
+        <div class="month-header">
+            <span id="monthTitle"></span>
+            <span id="daysCount"></span>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>الأحد</th><th>الإثنين</th><th>الثلاثاء</th><th>الأربعاء</th><th>الخميس</th><th>الجمعة</th><th>السبت</th>
+                </tr>
+            </thead>
+            <tbody id="calendarBody"></tbody>
+        </table>
+    </main>
+</div>
+
+<script>
+const HIJRI_MONTHS = ["محرم", "صفر", "ربيع الأول", "ربيع الآخر", "جمادى الأولى", "جمادى الآخرة", "رجب", "شعبان", "رمضان", "شوال", "ذو القعدة", "ذو الحجة"];
+const GREGORIAN_MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+
+const SYSTEM_START_DATE = new Date(2034, 2, 21); // 21 مارس 2034
+const SYSTEM_START_YEAR = 1456; // 1 محرم 1456
+let currentDate = new Date();
+let hijriOffset = 0;
+
+function cloneDate(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function addDays(d, days) { const r = cloneDate(d); r.setDate(r.getDate() + days); return r; }
+
+function getTraditionalHijri(date) {
+    const adjustedDate = addDays(date, hijriOffset);
+    const formatter = new Intl.DateTimeFormat('en-TN-u-ca-islamic-umalqura', {
+        day: 'numeric', month: 'numeric', year: 'numeric'
+    });
+    const parts = formatter.formatToParts(adjustedDate);
+    let day, month, year;
+    for (const p of parts) {
+        if (p.type === 'day') day = parseInt(p.value);
+        if (p.type === 'month') month = parseInt(p.value) - 1;
+        if (p.type === 'year') year = parseInt(p.value);
+    }
+    return { year, month, day };
+}
+
+function isGregorianLeapYear(y) { return y % 400 === 0 || (y % 4 === 0 && y % 100 !== 0); }
+
+function systemYearHasLeapDay(start) {
+    const end = addDays(start, 364);
+    for (let y = start.getFullYear(); y <= end.getFullYear(); y++) {
+        if (!isGregorianLeapYear(y)) continue;
+        const feb29 = new Date(y, 1, 29);
+        if (feb29 >= start && feb29 <= end) return true;
+    }
+    return false;
+}
+
+function getSystemMonthLengths(hijriYear) {
+    const start = getSystemYearStart(hijriYear);
+    const leap = systemYearHasLeapDay(start);
+    return [31, 31, 31, 31, 31, leap ? 31 : 30, 31, 30, 30, 30, 30, 29];
+}
+
+const systemYearStarts = {};
+systemYearStarts[SYSTEM_START_YEAR] = cloneDate(SYSTEM_START_DATE);
+
+function getSystemYearStart(hYear) {
+    if (systemYearStarts[hYear]) return cloneDate(systemYearStarts[hYear]);
+    let d = cloneDate(SYSTEM_START_DATE);
+    for (let y = SYSTEM_START_YEAR; y < hYear; y++) {
+        const lengths = getSystemMonthLengths(y);
+        d = addDays(d, lengths.reduce((a, b) => a + b, 0));
+        systemYearStarts[y + 1] = cloneDate(d);
+    }
+    return cloneDate(d);
+}
+
+function getSystemHijri(date) {
+    let y = SYSTEM_START_YEAR;
+    while (getSystemYearStart(y + 1) <= date) y++;
+    const start = getSystemYearStart(y);
+    const lengths = getSystemMonthLengths(y);
+    let rem = Math.round((Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) / 86400000);
+    for (let m = 0; m < 12; m++) {
+        if (rem < lengths[m]) return { year: y, month: m, day: rem + 1 };
+        rem -= lengths[m];
+    }
+    return { year: y, month: 11, day: 29 };
+}
+
+function getHijriData(date) {
+    return (date < SYSTEM_START_DATE) ? getTraditionalHijri(date) : getSystemHijri(date);
+}
+
+function getExactGregorianForHijri(hYear, hMonth, hDay, referenceYear) {
+    if (hYear >= SYSTEM_START_YEAR) {
+        let date = getSystemYearStart(hYear);
+        const lengths = getSystemMonthLengths(hYear);
+        for (let m = 0; m < hMonth; m++) date = addDays(date, lengths[m]);
+        return addDays(date, hDay - 1);
+    }
+
+    let searchStart = new Date(referenceYear - 1, 0, 1);
+    for (let i = 0; i < 800; i++) {
+        let test = addDays(searchStart, i);
+        let h = getTraditionalHijri(test);
+        if (h.year === hYear && h.month === hMonth && h.day === hDay) {
+            return test;
+        }
+    }
+    return null;
+}
+
+const BASE_EVENTS = [
+    { name: "🌙 رأس السنة الهجرية", month: 0, day: 1 },
+    { name: "⭐ المولد النبوي الشريف", month: 2, day: 12 },
+    { name: "🌙 أول أيام شهر رمضان", month: 8, day: 1 },
+    { name: "🎉 عيد الفطر السعيد", month: 9, day: 1 },
+    { name: "🕋 وقفة عرفات", month: 11, day: 9 },
+    { name: "🥩 عيد الأضحى المبارك", month: 11, day: 10 }
+];
+
+function renderEventsAllYear(hijriYear, currentGYear) {
+    const box = document.getElementById("eventsList");
+    const header = document.getElementById("eventsHeader");
+    header.textContent = `مناسبات سنة ${hijriYear} هـ`;
+    box.innerHTML = "";
+
+    for (const ev of BASE_EVENTS) {
+        const gDate = getExactGregorianForHijri(hijriYear, ev.month, ev.day, currentGYear);
+        if (gDate) {
+            box.innerHTML += `
+                <div class="event">
+                    <div class="event-name">${ev.name}</div>
+                    <div class="event-date">
+                        ${ev.day} ${HIJRI_MONTHS[ev.month]} ${hijriYear}<br>
+                        ${gDate.getDate()} ${GREGORIAN_MONTHS[gDate.getMonth()]} ${gDate.getFullYear()}
+                    </div>
+                </div>
+            `;
+        }
+    }
+}
+
+function getTargetHijriYearForGregorian(gYear) {
+    if (gYear >= 2034) {
+        return gYear - 578;
+    } else {
+        let testDate = new Date(gYear, 5, 1);
+        return getTraditionalHijri(testDate).year;
+    }
+}
+
+function renderCalendar() {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+
+    document.getElementById("yearTitle").textContent = year + " ميلادي";
+    document.getElementById("monthTitle").textContent = GREGORIAN_MONTHS[month] + " " + year;
+    document.getElementById("daysCount").textContent = "عدد الأيام: " + lastDay.getDate();
+
+    const body = document.getElementById("calendarBody");
+    body.innerHTML = "";
+    let row = document.createElement("tr");
+
+    for (let i = 0; i < firstDay.getDay(); i++) row.appendChild(document.createElement("td"));
+
+    for (let day = 1; day <= lastDay.getDate(); day++) {
+        if (row.children.length === 7) {
+            body.appendChild(row);
+            row = document.createElement("tr");
+        }
+
+        const date = new Date(year, month, day);
+        const hijri = getHijriData(date);
+
+        const cell = document.createElement("td");
+        const dayBox = document.createElement("div");
+        dayBox.className = "day";
+
+        if (hijri.day === 1) dayBox.classList.add("hijri-month-start");
+        if (date.getTime() === SYSTEM_START_DATE.getTime()) dayBox.classList.add("system-start");
+
+        const icon = hijri.day === 1 ? "🌙 " : "";
+        dayBox.innerHTML = `
+            <div class="gregorian-day">${day}</div>
+            <div class="hijri-day">${icon}${hijri.day} ${HIJRI_MONTHS[hijri.month]} ${hijri.year}</div>
+        `;
+
+        cell.appendChild(dayBox);
+        row.appendChild(cell);
+    }
+
+    while (row.children.length < 7) row.appendChild(document.createElement("td"));
+    body.appendChild(row);
+
+    const targetHijriYear = getTargetHijriYearForGregorian(year);
+    renderEventsAllYear(targetHijriYear, year);
+}
+
+function previousMonth() { currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1); renderCalendar(); }
+function nextMonth() { currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1); renderCalendar(); }
+function previousYear() { currentDate = new Date(currentDate.getFullYear() - 1, currentDate.getMonth(), 1); renderCalendar(); }
+function nextYear() { currentDate = new Date(currentDate.getFullYear() + 1, currentDate.getMonth(), 1); renderCalendar(); }
+function goToStart() { currentDate = cloneDate(SYSTEM_START_DATE); renderCalendar(); }
+function adjustHijri(amount) { hijriOffset += amount; renderCalendar(); }
+
+renderCalendar();
+</script>
+</body>
+</html>
